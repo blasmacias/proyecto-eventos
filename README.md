@@ -231,10 +231,22 @@ GET /api/events
 
 ### Pre-entrega 2
 
-Respuesta del registro (sin password)
+Registro exitoso (201, sin password y con email normalizado)
 
-![POST /api/sessions/register](docs/register.png)
+![Registro exitoso](docs/register.png)
 
-Usuario en MongoDB con la contraseña hasheada
+Campos faltantes (400)
 
-![Usuario en MongoDB](docs/mongo-user.png)
+![Campos faltantes](docs/campos-faltantes.png)
+
+Contraseña corta (400)
+
+![Contraseña corta](docs/password-corta.png)
+
+Email ya registrado (409)
+
+![Email ya registrado](docs/email-registrado.png)
+
+Intento de registrarse como admin (se crea como user)
+
+![Rol admin ignorado](docs/rol-admin.png)
