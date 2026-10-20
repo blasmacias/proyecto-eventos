@@ -16,7 +16,7 @@ Plataforma de **eventos e inscripciones**: los organizadores publican eventos (c
 ## Instalación
 
 ```bash
-git clone <url-del-repositorio>
+git clone https://github.com/blasmacias/proyecto-eventos.git
 cd proyecto-eventos
 npm install
 ```
