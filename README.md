@@ -250,3 +250,7 @@ Email ya registrado (409)
 Intento de registrarse como admin (se crea como user)
 
 ![Rol admin ignorado](docs/rol-admin.png)
+
+   Usuario en MongoDB con la contraseña hasheada
+
+   ![Usuario en MongoDB](docs/mongo-user.png)
