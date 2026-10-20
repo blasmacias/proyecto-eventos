@@ -116,3 +116,13 @@ Cualquier ruta inexistente devuelve `404` con `{ "status": "error", "message": "
 **User**: `first_name`, `last_name`, `email` (único), `password`, `role` (`user` | `organizer` | `admin`).
 
 **Event**: `title`, `description`, `date`, `location`, `capacity`, `organizer` (referencia a `User`).
+
+## Evidencia
+
+GET /api/health
+
+![GET /api/health](docs/health.png)
+
+GET /api/events
+
+![GET /api/events](docs/events.png)
