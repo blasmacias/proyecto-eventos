@@ -1,19 +1,25 @@
 import { isNonEmptyString } from './validators.js';
 
-export const EVENT_EDITABLE_FIELDS = ['title', 'description', 'date', 'location', 'capacity'];
-export const EVENT_REQUIRED_FIELDS = ['title', 'date', 'location', 'capacity'];
+export const EVENT_EDITABLE_FIELDS = ['title', 'description', 'category', 'date', 'location', 'capacity', 'price'];
+export const EVENT_REQUIRED_FIELDS = ['title', 'description', 'category', 'date', 'location', 'capacity'];
 
 const isValidDate = (value) =>
   (typeof value === 'string' || typeof value === 'number') && !Number.isNaN(new Date(value).getTime());
 
-const isValidCapacity = (value) => Number.isInteger(value) && value >= 1;
-
 const FIELD_RULES = {
   title: { isValid: isNonEmptyString, message: 'El título no puede estar vacío' },
-  description: { isValid: (value) => typeof value === 'string', message: 'La descripción debe ser un texto' },
+  description: { isValid: isNonEmptyString, message: 'La descripción no puede estar vacía' },
+  category: { isValid: isNonEmptyString, message: 'La categoría no puede estar vacía' },
   date: { isValid: isValidDate, message: 'La fecha es inválida' },
   location: { isValid: isNonEmptyString, message: 'La ubicación no puede estar vacía' },
-  capacity: { isValid: isValidCapacity, message: 'El cupo debe ser un número entero mayor a 0' }
+  capacity: {
+    isValid: (value) => Number.isInteger(value) && value > 0,
+    message: 'El cupo (capacity) debe ser un número entero mayor a 0'
+  },
+  price: {
+    isValid: (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0,
+    message: 'El precio (price) debe ser un número mayor o igual a 0'
+  }
 };
 
 export const pickEditableFields = (body = {}) =>
@@ -28,9 +34,10 @@ export const findInvalidField = (data) => {
 
 export const normalizeEventData = (data) => {
   const normalized = { ...data };
-  ['title', 'description', 'location'].forEach((field) => {
+  ['title', 'description', 'category', 'location'].forEach((field) => {
     if (typeof normalized[field] === 'string') normalized[field] = normalized[field].trim();
   });
+  if (typeof normalized.category === 'string') normalized.category = normalized.category.toLowerCase();
   if (normalized.date !== undefined) normalized.date = new Date(normalized.date);
   return normalized;
 };

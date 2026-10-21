@@ -1,13 +1,12 @@
 import eventsDao from '../dao/events.dao.js';
-import { EVENT_STATUS } from '../models/Event.js';
 
 class EventsRepository {
   constructor(dao) {
     this.dao = dao;
   }
 
-  getPublished() {
-    return this.dao.getAll({ status: EVENT_STATUS.PUBLISHED });
+  paginate(filter, options) {
+    return this.dao.paginate(filter, options);
   }
 
   getById(id) {

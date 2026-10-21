@@ -2,8 +2,12 @@ import mongoose from 'mongoose';
 import Event from '../models/Event.js';
 
 class EventsDao {
-  getAll(filter = {}) {
-    return Event.find(filter).sort({ date: 1 }).lean();
+  async paginate(filter, { page, limit, sort }) {
+    const [docs, total] = await Promise.all([
+      Event.find(filter).sort(sort).skip((page - 1) * limit).limit(limit).lean(),
+      Event.countDocuments(filter)
+    ]);
+    return { docs, total };
   }
 
   getById(id) {

@@ -4,7 +4,7 @@ import { HttpError } from '../utils/httpError.js';
 
 const checkEventOwnership = async (req, res, next) => {
   try {
-    const event = await eventsService.getById(req.params.eid);
+    const event = await eventsService.getById(req.params.id);
     const isOwner = event.organizer === req.user.id;
     const canManageAnyEvent = PERMISSIONS.MANAGE_ANY_EVENT.includes(req.user.role);
 
