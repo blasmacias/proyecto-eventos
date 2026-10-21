@@ -1,5 +1,6 @@
 import usersRepository from '../repositories/users.repository.js';
-import { createHash } from '../utils/hash.js';
+import { createHash, isValidPassword } from '../utils/hash.js';
+import { generateToken } from '../utils/jwt.js';
 import { HttpError } from '../utils/httpError.js';
 import {
   MIN_PASSWORD_LENGTH,
@@ -10,6 +11,7 @@ import {
 import { toPublicUser } from '../dto/user.dto.js';
 
 const MONGO_DUPLICATE_KEY = 11000;
+const INVALID_CREDENTIALS = 'Credenciales inválidas';
 
 class SessionsService {
   constructor(repository) {
@@ -50,6 +52,22 @@ class SessionsService {
       }
       throw error;
     }
+  }
+
+  async login({ email, password } = {}) {
+    if (!isNonEmptyString(email) || !isNonEmptyString(password)) {
+      throw new HttpError(400, 'Faltan campos obligatorios');
+    }
+
+    const user = await this.repository.getByEmail(normalizeEmail(email));
+    const passwordMatches = user ? await isValidPassword(password, user.password) : false;
+
+    if (!passwordMatches) {
+      throw new HttpError(401, INVALID_CREDENTIALS);
+    }
+
+    const { id, role } = toPublicUser(user);
+    return generateToken({ id, email: user.email, role });
   }
 }
 
