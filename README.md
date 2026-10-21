@@ -6,10 +6,11 @@ API REST desarrollada con Express para el proyecto de **Backend II**.
 - **Pre-entrega 2:** registro seguro de usuarios con validación, normalización de email, hash de contraseña con bcrypt y persistencia en MongoDB.
 - **Pre-entrega 3:** autenticación con JWT guardado en una cookie HttpOnly: login, ruta protegida `/current` y logout.
 - **Pre-entrega 4:** la autenticación pasa por estrategias de **Passport.js** (`register`, `login`, `current`). Las rutas y sus respuestas no cambian.
+- **Pre-entrega 5:** roles (`user`, `organizer`, `admin`), matriz de permisos, middlewares de autenticación y autorización, eventos en MongoDB con control de propiedad y rutas administrativas.
 
 ## Temática
 
-Plataforma de **eventos e inscripciones**: los organizadores publican eventos (charlas, talleres, recitales, conferencias) con un cupo limitado y los usuarios se inscriben a ellos. En próximas entregas se incorporarán roles, autorización, gestión de eventos, inscripciones, control de cupos y notificaciones.
+Plataforma de **eventos e inscripciones**: los organizadores publican eventos (charlas, talleres, recitales, conferencias) con un cupo limitado y los usuarios se inscriben a ellos. En próximas entregas se incorporarán inscripciones, control de cupos y notificaciones.
 
 ## Tecnologías
 
@@ -65,44 +66,56 @@ Al iniciar se ve en consola `Conectado a MongoDB` y luego `Servidor escuchando e
 
 ```
 proyecto-eventos/
-├── docs/                              # capturas de evidencia
+├── docs/                                 # capturas de evidencia
+├── scripts/
+│   └── set-role.js                       # asigna un rol a un usuario por email (npm run set-role)
 ├── src/
-│   ├── app.js                         # configura Express e inicializa Passport (no levanta el server)
-│   ├── server.js                      # valida el entorno, conecta a MongoDB y levanta el servidor
+│   ├── app.js                            # configura Express e inicializa Passport (no levanta el server)
+│   ├── server.js                         # valida el entorno, conecta a MongoDB y levanta el servidor
 │   ├── config/
-│   │   ├── config.js                  # variables de entorno
-│   │   ├── cookies.js                 # nombre y opciones de la cookie de autenticación
-│   │   ├── db.js                      # conexión a MongoDB
-│   │   └── passport.config.js         # estrategias 'register', 'login' y 'current'
+│   │   ├── config.js                     # variables de entorno
+│   │   ├── cookies.js                    # nombre y opciones de la cookie de autenticación
+│   │   ├── db.js                         # conexión a MongoDB
+│   │   ├── passport.config.js            # estrategias 'register', 'login' y 'current'
+│   │   ├── roles.js                      # roles disponibles: user, organizer, admin
+│   │   └── permissions.js                # matriz de permisos: qué roles pueden hacer cada acción
 │   ├── routes/
 │   │   ├── health.router.js
-│   │   ├── events.router.js
-│   │   └── sessions.router.js         # delega en las estrategias de Passport
+│   │   ├── events.router.js              # aplica auth + authorize + propiedad en rutas protegidas
+│   │   ├── sessions.router.js
+│   │   └── users.router.js               # rutas administrativas (solo admin)
 │   ├── controllers/
 │   │   ├── health.controller.js
 │   │   ├── events.controller.js
-│   │   └── sessions.controller.js     # genera el JWT, setea y borra la cookie
+│   │   ├── sessions.controller.js        # genera el JWT, setea y borra la cookie
+│   │   └── users.controller.js
 │   ├── services/
-│   │   └── events.service.js
+│   │   ├── events.service.js             # validación y reglas de negocio de eventos
+│   │   └── users.service.js              # listado de usuarios y cambio de rol
 │   ├── repositories/
 │   │   ├── events.repository.js
 │   │   └── users.repository.js
 │   ├── dao/
-│   │   ├── events.memory.dao.js
-│   │   └── users.dao.js               # acceso a MongoDB con Mongoose
+│   │   ├── events.dao.js                 # acceso a MongoDB con Mongoose
+│   │   └── users.dao.js
 │   ├── dto/
-│   │   └── user.dto.js                # datos públicos del usuario (sin password)
+│   │   ├── event.dto.js
+│   │   └── user.dto.js                   # datos públicos del usuario (sin password)
 │   ├── models/
 │   │   ├── User.js
 │   │   └── Event.js
 │   ├── middlewares/
-│   │   ├── passportCall.middleware.js # ejecuta passport.authenticate(...) y traduce fallos a JSON
+│   │   ├── auth.middleware.js            # autenticación: valida el JWT de la cookie → 401
+│   │   ├── authorize.middleware.js       # autorización: recibe roles permitidos → 403
+│   │   ├── eventOwnership.middleware.js  # propiedad: organizer solo sus eventos, admin todos → 403
+│   │   ├── passportCall.middleware.js    # ejecuta passport.authenticate(...) y traduce fallos a JSON
 │   │   ├── notFound.middleware.js
 │   │   └── errorHandler.middleware.js
 │   └── utils/
-│       ├── jwt.js                     # firmar y verificar JWT
-│       ├── hash.js                    # bcrypt
-│       ├── validators.js              # validación y normalización de email
+│       ├── jwt.js                        # firmar y verificar JWT
+│       ├── hash.js                       # bcrypt
+│       ├── validators.js                 # validación y normalización de email
+│       ├── eventValidators.js            # validación de campos de eventos
 │       └── httpError.js
 ├── .env.example
 ├── .gitignore
@@ -113,18 +126,16 @@ proyecto-eventos/
 ### Flujo de capas
 
 ```
-Ruta → passportCall('estrategia') → Estrategia de Passport → Repositorio → DAO → Modelo (MongoDB)
-                                   ↓ (éxito: req.user)
-                                Controlador → respuesta / cookie
+Ruta → auth (401) → authorize(roles) (403) → [propiedad (403/404)] → Controlador → Servicio → Repositorio → DAO → Modelo
 ```
 
-- **Routes**: definen los endpoints y qué estrategia usa cada uno. No tienen lógica.
-- **Estrategias de Passport** (`config/passport.config.js`): validan datos y credenciales y dejan el usuario en `req.user`.
+- **Routes**: definen los endpoints y qué middlewares usan. No tienen lógica ni roles escritos a mano: usan `PERMISSIONS`.
+- **Middlewares**: autenticación, autorización por rol y propiedad de recursos, reutilizables en cualquier ruta.
+- **Estrategias de Passport** (`config/passport.config.js`): registro, login y lectura del JWT.
 - **Controllers**: arman la respuesta HTTP; en el login generan el JWT y setean la cookie.
+- **Services**: validaciones y reglas de negocio (por ejemplo, no modificar un evento cancelado).
 - **Repositories / DAO**: acceso a datos.
 - **DTO**: definen qué datos se exponen (nunca la contraseña).
-- **Utils**: helpers reutilizables (`jwt.js`, `hash.js`, `validators.js`).
-- **Middlewares**: `passportCall` y el manejo de 404 y errores.
 
 ## Autenticación con Passport
 
@@ -158,7 +169,7 @@ Las rutas usan el middleware `passportCall(nombre)`, que ejecuta `passport.authe
 ```js
 router.post('/register', passportCall('register'), register);
 router.post('/login', passportCall('login'), login);
-router.get('/current', passportCall('current'), current);
+router.get('/current', auth, current); // auth = passportCall('current')
 router.post('/logout', logout);
 ```
 
@@ -176,16 +187,94 @@ const strategies = {
 
 Para agregar un provider externo alcanza con instalar su paquete (por ejemplo `passport-github2`), crear la estrategia en ese archivo, agregarla al objeto `strategies` y usarla en una ruta con `passportCall('github')`. Las credenciales del provider (client ID, client secret, callback URL) irían en el `.env`.
 
+## Roles y autorización
+
+### Roles
+
+| Rol         | Quién es                                   | Cómo se obtiene |
+|-------------|--------------------------------------------|-----------------|
+| `user`      | Asistente: consulta eventos                | Por defecto al registrarse |
+| `organizer` | Organizador: crea y gestiona sus eventos   | Lo asigna un `admin` |
+| `admin`     | Administrador de la plataforma             | Con el script `npm run set-role` |
+
+El registro público **siempre** crea usuarios con rol `user`: si el body trae `"role": "admin"` o `"role": "organizer"`, se ignora. El modelo `User` solo acepta `user`, `organizer` o `admin`, con `user` por defecto.
+
+### Matriz de permisos
+
+| Acción                              | user | organizer | admin | Ruta |
+|-------------------------------------|:----:|:---------:|:-----:|------|
+| Consultar eventos publicados        | ✅   | ✅        | ✅    | `GET /api/events`, `GET /api/events/:eid` (públicas) |
+| Crear eventos                       | ❌   | ✅        | ✅    | `POST /api/events` |
+| Modificar / cancelar eventos propios| ❌   | ✅        | ✅    | `PUT /api/events/:eid`, `PATCH /api/events/:eid/cancel` |
+| Modificar cualquier evento          | ❌   | ❌        | ✅    | `PUT /api/events/:eid`, `PATCH /api/events/:eid/cancel` |
+| Ver todos los usuarios              | ❌   | ❌        | ✅    | `GET /api/users` |
+| Cambiar el rol de un usuario        | ❌   | ❌        | ✅    | `PATCH /api/users/:uid/role` |
+
+La matriz está definida en código en `src/config/permissions.js`, así que hay una sola fuente de verdad:
+
+```js
+export const PERMISSIONS = Object.freeze({
+  CREATE_EVENT: [ORGANIZER, ADMIN],
+  MANAGE_OWN_EVENT: [ORGANIZER, ADMIN],
+  MANAGE_ANY_EVENT: [ADMIN],
+  VIEW_USERS: [ADMIN],
+  CHANGE_USER_ROLE: [ADMIN]
+});
+```
+
+### Middlewares
+
+| Middleware | Archivo | Qué hace | Error |
+|------------|---------|----------|-------|
+| `auth` | `middlewares/auth.middleware.js` | Lee el JWT de la cookie `currentUser` (estrategia `current` de Passport), lo valida y busca al usuario en la base para poblar `req.user` con `{ id, email, role }` actualizados. | `401` si no hay sesión válida |
+| `authorize(...roles)` | `middlewares/authorize.middleware.js` | Recibe los roles permitidos como parámetro y los compara con `req.user.role`. | `403` si el rol no está permitido |
+| `checkEventOwnership` | `middlewares/eventOwnership.middleware.js` | Busca el evento y verifica que el usuario sea su organizador, salvo que su rol tenga `MANAGE_ANY_EVENT` (admin). | `404` si el evento no existe, `403` si no es propio |
+
+Se combinan en las rutas sin repetir lógica:
+
+```js
+router.post('/', auth, authorize(PERMISSIONS.CREATE_EVENT), createEvent);
+router.put('/:eid', auth, authorize(PERMISSIONS.MANAGE_OWN_EVENT), checkEventOwnership, updateEvent);
+router.get('/', auth, authorize(PERMISSIONS.VIEW_USERS), getUsers); // users.router.js
+```
+
+Como `auth` lee el rol desde la base en cada request, un cambio de rol aplica de inmediato, sin tener que volver a loguearse.
+
+### Diferencia entre 401 y 403
+
+| Código | Significado | Cuándo | Mensaje |
+|--------|-------------|--------|---------|
+| `401 Unauthorized` | **No autenticado**: la API no sabe quién sos | No hay cookie, el token fue manipulado, expiró o el usuario ya no existe | `No autenticado` |
+| `403 Forbidden` | **Sin permiso**: la API sabe quién sos, pero tu rol no puede hacer eso | `user` intenta crear un evento; `organizer` entra a una ruta de admin; `organizer` modifica un evento ajeno | `No tenés permisos para realizar esta acción` / `Solo podés modificar eventos que organizás` |
+
+Estos casos nunca responden `500`.
+
+### Cómo crear un organizer o un admin
+
+Como el registro público solo crea `user`, el primer `admin` se asigna con un script que usa el `MONGO_URL` del `.env`:
+
+```bash
+npm run set-role -- admin@mail.com admin
+```
+
+A partir de ahí, ese admin puede cambiar el rol de cualquier otro usuario desde la API con `PATCH /api/users/:uid/role`. El script también sirve para cualquier rol: `npm run set-role -- org@mail.com organizer`.
+
 ## Rutas disponibles
 
-| Método | Ruta                     | Descripción                                   | Protegida | Respuestas                    |
-|--------|--------------------------|-----------------------------------------------|-----------|-------------------------------|
-| GET    | `/api/health`            | Estado del servidor                           | No        | `200`                         |
-| GET    | `/api/events`            | Lista de eventos                              | No        | `200`                         |
-| POST   | `/api/sessions/register` | Registro de usuario                           | No        | `201` / `400` / `409`         |
-| POST   | `/api/sessions/login`    | Login; setea la cookie `currentUser`          | No        | `200` / `400` / `401`         |
-| GET    | `/api/sessions/current`  | Datos del usuario autenticado                 | Sí        | `200` / `401`                 |
-| POST   | `/api/sessions/logout`   | Cierra la sesión borrando la cookie           | No        | `200`                         |
+| Método | Ruta                          | Descripción                                   | Acceso                          | Respuestas |
+|--------|-------------------------------|-----------------------------------------------|---------------------------------|------------|
+| GET    | `/api/health`                 | Estado del servidor                           | Público                         | `200` |
+| GET    | `/api/events`                 | Eventos publicados                            | Público                         | `200` |
+| GET    | `/api/events/:eid`            | Detalle de un evento                          | Público                         | `200` / `404` |
+| POST   | `/api/events`                 | Crear evento                                  | `organizer`, `admin`            | `201` / `400` / `401` / `403` |
+| PUT    | `/api/events/:eid`            | Modificar evento                              | Dueño (`organizer`) o `admin`   | `200` / `400` / `401` / `403` / `404` |
+| PATCH  | `/api/events/:eid/cancel`     | Cancelar evento                               | Dueño (`organizer`) o `admin`   | `200` / `400` / `401` / `403` / `404` |
+| GET    | `/api/users`                  | Listar usuarios (ruta administrativa)         | `admin`                         | `200` / `401` / `403` |
+| PATCH  | `/api/users/:uid/role`        | Cambiar el rol de un usuario                  | `admin`                         | `200` / `400` / `401` / `403` / `404` |
+| POST   | `/api/sessions/register`      | Registro de usuario (siempre rol `user`)      | Público                         | `201` / `400` / `409` |
+| POST   | `/api/sessions/login`         | Login; setea la cookie `currentUser`          | Público                         | `200` / `400` / `401` |
+| GET    | `/api/sessions/current`       | Datos del usuario autenticado                 | Autenticado                     | `200` / `401` |
+| POST   | `/api/sessions/logout`        | Cierra la sesión borrando la cookie           | Público                         | `200` |
 
 Cualquier ruta inexistente devuelve `404` con `{ "status": "error", "message": "..." }`.
 
@@ -198,10 +287,98 @@ Cualquier ruta inexistente devuelve `404` con `{ "status": "error", "message": "
 
 ### GET `/api/events`
 
+Devuelve solo los eventos con estado `published`, ordenados por fecha. No requiere sesión.
+
 **200**
 ```json
-{ "status": "success", "payload": [] }
+{ "status": "success", "payload": [ { "id": "6690...", "title": "Congreso Tech 2026", "description": "Charlas", "date": "2026-12-10T18:00:00.000Z", "location": "Buenos Aires", "capacity": 100, "organizer": "665f2a...", "status": "published" } ] }
 ```
+
+### GET `/api/events/:eid`
+
+**200** con el evento en `payload` · **404** `{ "status": "error", "message": "Evento no encontrado" }`
+
+### POST `/api/events`
+
+Requiere sesión con rol `organizer` o `admin`. El `organizer` del evento es siempre el usuario logueado (si el body trae `organizer` o `status`, se ignoran).
+
+**Body**
+
+| Campo         | Tipo   | Reglas |
+|---------------|--------|--------|
+| `title`       | string | Obligatorio, no vacío |
+| `description` | string | Opcional |
+| `date`        | string | Obligatorio, fecha válida (ISO, ej. `2026-12-10T18:00:00Z`) |
+| `location`    | string | Obligatorio, no vacío |
+| `capacity`    | number | Obligatorio, entero mayor a 0 |
+
+**Request**
+```json
+{ "title": "Congreso Tech 2026", "description": "Charlas", "date": "2026-12-10T18:00:00Z", "location": "Buenos Aires", "capacity": 100 }
+```
+
+**201**
+```json
+{ "status": "success", "payload": { "id": "6690...", "title": "Congreso Tech 2026", "description": "Charlas", "date": "2026-12-10T18:00:00.000Z", "location": "Buenos Aires", "capacity": 100, "organizer": "665f2a...", "status": "published" } }
+```
+
+**400** `Faltan campos obligatorios` / `La fecha es inválida` / `El cupo debe ser un número entero mayor a 0`
+
+**401** (sin sesión)
+```json
+{ "status": "error", "message": "No autenticado" }
+```
+
+**403** (rol `user`)
+```json
+{ "status": "error", "message": "No tenés permisos para realizar esta acción" }
+```
+
+### PUT `/api/events/:eid`
+
+Requiere ser el `organizer` del evento o `admin`. Acepta cualquier subconjunto de `title`, `description`, `date`, `location`, `capacity`.
+
+**Request**
+```json
+{ "capacity": 150 }
+```
+
+**200** con el evento actualizado · **400** si no se envían campos válidos o el evento está cancelado · **403** si es un evento ajeno:
+```json
+{ "status": "error", "message": "Solo podés modificar eventos que organizás" }
+```
+**404** si el evento no existe.
+
+### PATCH `/api/events/:eid/cancel`
+
+Mismo acceso que `PUT`. Cambia el estado a `cancelled`; el evento deja de aparecer en `GET /api/events`.
+
+**200**
+```json
+{ "status": "success", "payload": { "id": "6690...", "title": "Congreso Tech 2026", "status": "cancelled" } }
+```
+
+### GET `/api/users` (administrativa)
+
+Solo `admin`. Nunca incluye contraseñas.
+
+**200**
+```json
+{ "status": "success", "payload": [ { "id": "665f2a...", "first_name": "Ana", "last_name": "Pérez", "email": "ana@mail.com", "role": "user" } ] }
+```
+
+**403** con rol `user` u `organizer` · **401** sin sesión.
+
+### PATCH `/api/users/:uid/role` (administrativa)
+
+Solo `admin`. Un admin no puede cambiar su propio rol.
+
+**Request**
+```json
+{ "role": "organizer" }
+```
+
+**200** con el usuario actualizado · **400** si el rol no es `user`, `organizer` o `admin` · **404** si el usuario no existe.
 
 ### POST `/api/sessions/register`
 
@@ -284,9 +461,9 @@ Requiere la cookie `currentUser`, que se envía sola después del login si se us
 { "status": "success", "message": "Sesión cerrada" }
 ```
 
-## Cómo probar el flujo completo
+## Cómo probar
 
-Con el servidor corriendo (`npm run dev`) y Postman o Thunder Client:
+### Flujo de sesión
 
 1. `POST /api/sessions/register` con el body de Ana → `201`.
 2. `POST /api/sessions/login` con `{ "email": "ana@mail.com", "password": "Secreta123" }` → `200`. En la pestaña **Cookies** aparece `currentUser`.
@@ -303,13 +480,32 @@ Con el servidor corriendo (`npm run dev`) y Postman o Thunder Client:
 | `/current` con el token modificado   | `401` `No autenticado`          |
 | `/current` con el token expirado     | `401` `No autenticado`          |
 
-Para probar el token modificado: en la pestaña **Cookies** de Thunder Client o Postman, editar el valor de `currentUser` cambiando algunas letras del final. Para probar la expiración: poner `JWT_EXPIRES_IN=10s` en el `.env`, reiniciar, loguearse y esperar 10 segundos.
+### Roles y autorización
+
+Preparación: registrar tres usuarios (`user@mail.com`, `org@mail.com`, `admin@mail.com`) y asignar roles:
+
+```bash
+npm run set-role -- admin@mail.com admin
+npm run set-role -- org@mail.com organizer
+```
+
+| Caso                                                  | Resultado esperado |
+|-------------------------------------------------------|--------------------|
+| `POST /api/events` logueado como `user`               | `403` |
+| `POST /api/events` logueado como `organizer`          | `201` |
+| `GET /api/users` logueado como `organizer`            | `403` |
+| `GET /api/users` logueado como `admin`                | `200` |
+| `POST /api/events` o `GET /api/users` sin cookie      | `401` |
+| `PUT /api/events/:eid` de otro organizer              | `403` `Solo podés modificar eventos que organizás` |
+| `PUT /api/events/:eid` de otro organizer, como `admin`| `200` |
+
+Para cambiar de usuario en Thunder Client o Postman, hacer `logout` y luego `login` con el otro email.
 
 ## Modelos
 
 **User**: `first_name`, `last_name`, `email` (único, en minúsculas), `password` (hash bcrypt), `role` (`user` | `organizer` | `admin`, por defecto `user`).
 
-**Event**: `title`, `description`, `date`, `location`, `capacity`, `organizer` (referencia a `User`).
+**Event**: `title`, `description`, `date`, `location`, `capacity`, `organizer` (referencia a `User`, obligatorio), `status` (`published` | `cancelled`, por defecto `published`).
 
 ## Evidencia
 
@@ -404,3 +600,30 @@ GET /current después del logout (401)
 Login con credenciales inválidas (401, mensaje genérico)
 
 ![Credenciales inválidas](docs/p4-login-invalido.png)
+
+
+### Pre-entrega 5
+
+POST /api/events con rol `user` → 403 (autenticado pero sin permiso)
+
+![Crear evento como user](docs/p5-evento-user-403.png)
+
+POST /api/events con rol `organizer` → 201
+
+![Crear evento como organizer](docs/p5-evento-organizer-201.png)
+
+Ruta administrativa GET /api/users con rol `organizer` → 403
+
+![Users como organizer](docs/p5-users-organizer-403.png)
+
+Ruta administrativa GET /api/users con rol `admin` → 200
+
+![Users como admin](docs/p5-users-admin-200.png)
+
+Organizer intentando modificar un evento ajeno → 403
+
+![Evento ajeno](docs/p5-evento-ajeno-403.png)
+
+Ruta privada sin cookie → 401
+
+![Sin cookie](docs/p5-sin-cookie-401.png)

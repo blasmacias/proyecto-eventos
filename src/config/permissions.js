@@ -1,0 +1,11 @@
+import { ROLES } from './roles.js';
+
+const { ORGANIZER, ADMIN } = ROLES;
+
+export const PERMISSIONS = Object.freeze({
+  CREATE_EVENT: [ORGANIZER, ADMIN],
+  MANAGE_OWN_EVENT: [ORGANIZER, ADMIN],
+  MANAGE_ANY_EVENT: [ADMIN],
+  VIEW_USERS: [ADMIN],
+  CHANGE_USER_ROLE: [ADMIN]
+});

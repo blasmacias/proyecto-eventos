@@ -92,7 +92,17 @@ const currentStrategy = new JwtStrategy(
     jwtFromRequest: cookieExtractor,
     secretOrKeyProvider: (req, rawToken, done) => done(null, config.jwtSecret)
   },
-  ({ id, email, role }, done) => done(null, { id, email, role })
+  async ({ id }, done) => {
+    try {
+      const user = await usersRepository.getById(id);
+      if (!user) return done(null, false);
+
+      const { email, role } = user;
+      return done(null, { id: user._id.toString(), email, role });
+    } catch (error) {
+      return done(error);
+    }
+  }
 );
 
 const strategies = {
